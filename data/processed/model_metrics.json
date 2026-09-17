@@ -1,0 +1,17 @@
+{
+  "n_train": 382,
+  "n_test": 128,
+  "pos_rate_train": 0.17015706806282724,
+  "accuracy_test": 0.6875,
+  "roc_auc_test": 0.7002572898799313,
+  "features": [
+    "price_usd_t",
+    "volume_24h_usd",
+    "market_cap_usd",
+    "market_cap_rank",
+    "ath_change_percentage",
+    "price_change_percentage_30d"
+  ],
+  "threshold_default": 50.0,
+  "threshold": 50.0
+}

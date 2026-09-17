@@ -1,0 +1,83 @@
+# CoinGecko collection config — Doge Defenders
+
+# Free-tier friendly: sleep between calls (seconds). Public tier is strict.
+rate_limit_seconds: 15
+# Optional: set COINGECKO_API_KEY in the environment for a demo/pro key.
+base_url: "https://api.coingecko.com/api/v3"
+# /market_chart/range and days=max are paid-only; public tier allows days<=365.
+chart_days: 365
+
+# 15 liquid non-stable tokens (CoinGecko ids). DOGE included for brand.
+# Volume: 15 tokens × 34 entry dates = 510 snapshots (≥500 course bar).
+tokens:
+  - bitcoin
+  - ethereum
+  - solana
+  - dogecoin
+  - cardano
+  - ripple
+  - avalanche-2
+  - chainlink
+  - polkadot
+  - litecoin
+  - near
+  - arbitrum
+  - aave
+  - uniswap
+  - pepe
+
+# Weekly entry dates inside the free-tier 365d chart window.
+# Last entry 2026-06-08 + 90d labels through 2026-09-06 (before collection day).
+entry_dates:
+  - "2025-10-20"
+  - "2025-10-27"
+  - "2025-11-03"
+  - "2025-11-10"
+  - "2025-11-17"
+  - "2025-11-24"
+  - "2025-12-01"
+  - "2025-12-08"
+  - "2025-12-15"
+  - "2025-12-22"
+  - "2025-12-29"
+  - "2026-01-05"
+  - "2026-01-12"
+  - "2026-01-19"
+  - "2026-01-26"
+  - "2026-02-02"
+  - "2026-02-09"
+  - "2026-02-16"
+  - "2026-02-23"
+  - "2026-03-02"
+  - "2026-03-09"
+  - "2026-03-16"
+  - "2026-03-23"
+  - "2026-03-30"
+  - "2026-04-06"
+  - "2026-04-13"
+  - "2026-04-20"
+  - "2026-04-27"
+  - "2026-05-04"
+  - "2026-05-11"
+  - "2026-05-18"
+  - "2026-05-25"
+  - "2026-06-01"
+  - "2026-06-08"
+
+label_horizon_days: 90
+hist_lookback_days: 30
+
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  snapshots_csv: "data/processed/snapshots.csv"
+  research_notes_csv: "data/manual/research_notes.csv"
+  adequacy_report: "data/processed/adequacy_report.json"
+  model_path: "data/processed/invest_model.joblib"
+  model_metrics: "data/processed/model_metrics.json"
+  decisions_csv: "data/processed/decisions.csv"
+  latest_decisions_csv: "data/processed/latest_decisions.csv"
+  last_query_json: "data/processed/last_query.json"
+
+# Invest decision: score = P(positive_90d) * 100; Invest if score >= threshold.
+invest_threshold: 50

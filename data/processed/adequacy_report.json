@@ -1,0 +1,34 @@
+{
+  "records": {
+    "value": 510,
+    "standard": 500,
+    "ok": true
+  },
+  "usable_attributes": {
+    "value": 11,
+    "standard": 10,
+    "ok": true,
+    "attrs": [
+      "token_symbol",
+      "decision_ts",
+      "price_usd_t",
+      "volume_24h_usd",
+      "market_cap_usd",
+      "market_cap_rank",
+      "category",
+      "primary_exchange",
+      "hist_prices_30d",
+      "ath_change_percentage",
+      "price_change_percentage_30d"
+    ]
+  },
+  "minority_class_cases": {
+    "value": 87,
+    "standard": 60,
+    "ok": true,
+    "positives": 87,
+    "negatives": 423,
+    "labeled": 510
+  },
+  "recommendations": []
+}

@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+
+# Large CoinGecko JSON pulls — regenerate with collector
+data/raw/*
+!data/raw/.gitkeep
+
+# Keep processed analysis outputs for teammates / dashboard
+# (snapshots, decisions, model). Ignore transient query logs only.
+data/processed/last_query.json
+
+# Local virtualenv / IDE
+.idea/
+.vscode/
