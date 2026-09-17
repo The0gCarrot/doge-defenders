@@ -17,6 +17,15 @@ cd "C:\Users\gabri\OneDrive\Documents\toddarbbott\school project doge defender"
 python -m pip install -r requirements.txt
 ```
 
+**GitHub (team):** https://github.com/The0gCarrot/doge-defenders
+
+```powershell
+git clone https://github.com/The0gCarrot/doge-defenders.git
+cd doge-defenders
+python -m pip install -r requirements.txt
+streamlit run dashboard/app.py
+```
+
 Optional: set `COINGECKO_API_KEY` for a demo key. The collector sleeps `rate_limit_seconds` between calls.
 
 ## Dashboard (primary UI)
