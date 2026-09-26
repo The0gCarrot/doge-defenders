@@ -1,17 +1,18 @@
 {
-  "n_train": 382,
-  "n_test": 128,
-  "pos_rate_train": 0.17015706806282724,
-  "accuracy_test": 0.6875,
-  "roc_auc_test": 0.7002572898799313,
+  "n_train": 393,
+  "n_test": 132,
+  "pos_rate_train": 0.7735368956743003,
+  "accuracy_test": 0.7954545454545454,
+  "roc_auc_test": 0.8787581699346405,
   "features": [
-    "price_usd_t",
+    "price_usd",
     "volume_24h_usd",
     "market_cap_usd",
     "market_cap_rank",
-    "ath_change_percentage",
-    "price_change_percentage_30d"
+    "drawdown_from_peak_pct",
+    "momentum_30d_pct"
   ],
   "threshold_default": 50.0,
+  "news_overlay": "base_score + news_delta (\u00b15), clamped 0-100",
   "threshold": 50.0
 }

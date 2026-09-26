@@ -14,21 +14,22 @@ if str(ROOT) not in sys.path:
 
 from src import MISSING_NUM, MISSING_STR, ensure_dirs, load_config, write_json
 
-# Usable attributes (course: varies, coded, not id/constant/near-copy of another).
 USABLE_ATTRS = [
     "token_symbol",
-    "decision_ts",
-    "price_usd_t",
+    "report_date",
+    "price_usd",
+    "return_24h",
     "volume_24h_usd",
     "market_cap_usd",
     "market_cap_rank",
     "category",
     "primary_exchange",
     "hist_prices_30d",
-    "ath_change_percentage",
-    "price_change_percentage_30d",
-    "research_notes",
-    "news_score",
+    "momentum_30d_pct",
+    "drawdown_from_peak_pct",
+    "press_release",
+    "press_opinion",
+    "news_count_10d",
 ]
 
 
@@ -39,13 +40,15 @@ def is_missing(col: str, val: str) -> bool:
     if s == "" or s == MISSING_STR:
         return True
     if col in {
-        "price_usd_t",
+        "price_usd",
+        "return_24h",
         "volume_24h_usd",
         "market_cap_usd",
         "market_cap_rank",
-        "ath_change_percentage",
-        "price_change_percentage_30d",
-        "news_score",
+        "momentum_30d_pct",
+        "drawdown_from_peak_pct",
+        "news_count_10d",
+        "news_delta",
         "price_usd_t90",
         "return_90d",
         "positive_90d_return",
@@ -75,7 +78,7 @@ def main() -> None:
 
     cfg = load_config(args.config)
     ensure_dirs(cfg)
-    snap_path = ROOT / cfg["paths"]["snapshots_csv"]
+    snap_path = ROOT / cfg["paths"].get("daily_reports_csv", cfg["paths"]["snapshots_csv"])
     if not snap_path.exists():
         raise SystemExit(f"Missing {snap_path}")
 
@@ -117,22 +120,26 @@ def main() -> None:
     }
     if n < 500:
         report["recommendations"].append(
-            "Widen token universe and/or add entry_dates in config.yaml, then re-run collector."
+            "Increase daily_report_days or tokens in config.yaml, then re-run collector."
         )
     if len(usable) < 10:
         report["recommendations"].append(
-            "Fill research_notes/news_score via append_research_notes.py; check API fields not all missing."
+            "Check API fields; fetch status_updates for news_headlines_10d if empty."
         )
     if minority < 60:
         report["recommendations"].append(
-            "Add more tokens/entry dates spanning mixed regimes so positive_90d_return minority clears 60."
+            "Widen the daily date window across mixed regimes so minority clears 60."
         )
 
     out = ROOT / cfg["paths"]["adequacy_report"]
     write_json(out, report)
     print(json.dumps(report, indent=2))
     print(f"Wrote {out}")
-    if not (report["records"]["ok"] and report["usable_attributes"]["ok"] and report["minority_class_cases"]["ok"]):
+    if not (
+        report["records"]["ok"]
+        and report["usable_attributes"]["ok"]
+        and report["minority_class_cases"]["ok"]
+    ):
         sys.exit(2)
 
 

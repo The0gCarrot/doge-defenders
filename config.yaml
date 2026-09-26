@@ -1,14 +1,10 @@
-# CoinGecko collection config — Doge Defenders
+# Doge Defenders — daily report + paper trading config
 
-# Free-tier friendly: sleep between calls (seconds). Public tier is strict.
 rate_limit_seconds: 15
-# Optional: set COINGECKO_API_KEY in the environment for a demo/pro key.
 base_url: "https://api.coingecko.com/api/v3"
-# /market_chart/range and days=max are paid-only; public tier allows days<=365.
 chart_days: 365
 
-# 15 liquid non-stable tokens (CoinGecko ids). DOGE included for brand.
-# Volume: 15 tokens × 34 entry dates = 510 snapshots (≥500 course bar).
+# 15 tokens × 34 calendar days = 510 daily reports (≥500 course bar).
 tokens:
   - bitcoin
   - ethereum
@@ -26,51 +22,59 @@ tokens:
   - uniswap
   - pepe
 
-# Weekly entry dates inside the free-tier 365d chart window.
-# Last entry 2026-06-08 + 90d labels through 2026-09-06 (before collection day).
-entry_dates:
-  - "2025-10-20"
-  - "2025-10-27"
-  - "2025-11-03"
-  - "2025-11-10"
-  - "2025-11-17"
-  - "2025-11-24"
-  - "2025-12-01"
-  - "2025-12-08"
-  - "2025-12-15"
-  - "2025-12-22"
-  - "2025-12-29"
-  - "2026-01-05"
-  - "2026-01-12"
-  - "2026-01-19"
-  - "2026-01-26"
-  - "2026-02-02"
-  - "2026-02-09"
-  - "2026-02-16"
-  - "2026-02-23"
-  - "2026-03-02"
-  - "2026-03-09"
-  - "2026-03-16"
-  - "2026-03-23"
-  - "2026-03-30"
-  - "2026-04-06"
-  - "2026-04-13"
-  - "2026-04-20"
-  - "2026-04-27"
-  - "2026-05-04"
-  - "2026-05-11"
-  - "2026-05-18"
-  - "2026-05-25"
-  - "2026-06-01"
-  - "2026-06-08"
+# Display names for GDELT queries (reduce false positives).
+token_display_names:
+  bitcoin: Bitcoin
+  ethereum: Ethereum
+  solana: Solana
+  dogecoin: Dogecoin
+  cardano: Cardano
+  ripple: XRP
+  avalanche-2: Avalanche
+  chainlink: Chainlink
+  polkadot: Polkadot
+  litecoin: Litecoin
+  near: NEAR Protocol
+  arbitrum: Arbitrum
+  aave: Aave
+  uniswap: Uniswap
+  pepe: Pepe
+
+# Yahoo Finance RSS symbols (USD pairs).
+yahoo_symbols:
+  bitcoin: BTC-USD
+  ethereum: ETH-USD
+  solana: SOL-USD
+  dogecoin: DOGE-USD
+  cardano: ADA-USD
+  ripple: XRP-USD
+  avalanche-2: AVAX-USD
+  chainlink: LINK-USD
+  polkadot: DOT-USD
+  litecoin: LTC-USD
+  near: NEAR-USD
+  arbitrum: ARB-USD
+  aave: AAVE-USD
+  uniswap: UNI-USD
+  pepe: PEPE-USD
+
+# Consecutive daily report dates. End date is far enough back that
+# price at T+90 exists in the free-tier 365d chart (collection ~Sep 2026).
+daily_report_days: 34
+daily_end_date: "2026-06-26"
+# Also write today's 15 token rows (paper portfolio starts here; 90d label may be missing).
+include_today: true
 
 label_horizon_days: 90
 hist_lookback_days: 30
+news_lookback_days: 10
 
 paths:
   raw_dir: "data/raw"
   processed_dir: "data/processed"
-  snapshots_csv: "data/processed/snapshots.csv"
+  # Canonical daily table (also aliased as snapshots_csv for older scripts).
+  daily_reports_csv: "data/processed/daily_reports.csv"
+  snapshots_csv: "data/processed/daily_reports.csv"
   research_notes_csv: "data/manual/research_notes.csv"
   adequacy_report: "data/processed/adequacy_report.json"
   model_path: "data/processed/invest_model.joblib"
@@ -78,6 +82,16 @@ paths:
   decisions_csv: "data/processed/decisions.csv"
   latest_decisions_csv: "data/processed/latest_decisions.csv"
   last_query_json: "data/processed/last_query.json"
+  paper_ledger_csv: "data/processed/paper_ledger.csv"
+  paper_bankroll_json: "data/processed/paper_bankroll.json"
 
-# Invest decision: score = P(positive_90d) * 100; Invest if score >= threshold.
+# Model: Invest if P(up in 90d)*100 >= threshold.
 invest_threshold: 50
+# Paper trading: only from this day forward (today | latest | YYYY-MM-DD).
+# Rows before this date get paper fields = N/A and are not written to the ledger.
+paper_start_date: today
+paper_starting_balance: 1000
+paper_stop_loss_pct: -15
+paper_take_profit_pct: 25
+paper_max_hold_days: 90
+# Invest score 94 → allocate 9.4% of remaining cash (allocation_pct = score / 10).

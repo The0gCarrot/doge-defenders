@@ -1,8 +1,8 @@
 """
-Train and score invest / skip decisions from market features only.
+Train and score invest / skip from daily-report market features.
 
-No research_notes or news_score — model uses CoinGecko snapshot fields only.
-Outputs invest_score (0–100) and decision (Invest | Skip).
+Features: price, volume, market cap, rank, 30d momentum, drawdown-from-peak.
+After scoring, merge scores into daily_reports and run paper trading.
 """
 
 from __future__ import annotations
@@ -27,28 +27,42 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src import MISSING_NUM, ensure_dirs, load_config, write_json
+from src.paper_trade import merge_scores_into_reports, run_paper_on_reports
+from src.collect_coingecko import REPORT_FIELDS, write_reports_csv
 
 FEATURE_COLS = [
-    "price_usd_t",
+    "price_usd",
     "volume_24h_usd",
     "market_cap_usd",
     "market_cap_rank",
-    "ath_change_percentage",
-    "price_change_percentage_30d",
+    "drawdown_from_peak_pct",
+    "momentum_30d_pct",
 ]
 
+# Legacy aliases if an old file still uses snapshot names
+FEATURE_ALIASES = {
+    "price_usd": ("price_usd", "price_usd_t"),
+    "drawdown_from_peak_pct": ("drawdown_from_peak_pct", "ath_change_percentage"),
+    "momentum_30d_pct": ("momentum_30d_pct", "price_change_percentage_30d"),
+}
+
 DECISION_FIELDS = [
-    "snapshot_id",
+    "report_id",
     "coingecko_id",
     "token_symbol",
-    "decision_ts",
-    "price_usd_t",
+    "report_date",
+    "price_usd",
+    "return_24h",
     "volume_24h_usd",
     "market_cap_usd",
     "market_cap_rank",
-    "ath_change_percentage",
-    "price_change_percentage_30d",
+    "drawdown_from_peak_pct",
+    "momentum_30d_pct",
+    "press_opinion",
+    "press_conflict",
+    "news_delta",
     "positive_90d_return",
+    "base_score",
     "invest_score",
     "decision",
 ]
@@ -63,20 +77,25 @@ def _to_float(val: Any, default: float = float(MISSING_NUM)) -> float:
         return default
 
 
-def load_snapshots(path: Path) -> list[dict[str, str]]:
+def _get(row: dict[str, str], logical: str) -> str:
+    for key in FEATURE_ALIASES.get(logical, (logical,)):
+        if key in row and row[key] not in (None, ""):
+            return row[key]
+    return row.get(logical, "")
+
+
+def load_reports(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
 def feature_matrix(rows: list[dict[str, str]]) -> tuple[np.ndarray, list[int]]:
-    """Build X; return indices of rows with usable features + labeled target."""
     X_list: list[list[float]] = []
     keep: list[int] = []
     for i, r in enumerate(rows):
-        feats = [_to_float(r.get(c)) for c in FEATURE_COLS]
+        feats = [_to_float(_get(r, c)) for c in FEATURE_COLS]
         if any(f == float(MISSING_NUM) for f in feats):
             continue
-        # log-scale heavy-tailed market size / volume
         feats[0] = np.log1p(max(feats[0], 0.0))
         feats[1] = np.log1p(max(feats[1], 0.0))
         feats[2] = np.log1p(max(feats[2], 0.0))
@@ -136,6 +155,7 @@ def train_model(rows: list[dict[str, str]]) -> tuple[Pipeline, dict[str, Any]]:
         "roc_auc_test": float(roc_auc_score(y_test, proba)) if len(set(y_test)) > 1 else None,
         "features": FEATURE_COLS,
         "threshold_default": 50.0,
+        "news_overlay": "base_score + news_delta (±5), clamped 0-100",
     }
     return pipe, metrics
 
@@ -145,6 +165,7 @@ def score_rows(
     rows: list[dict[str, str]],
     threshold: float = 50.0,
 ) -> list[dict[str, Any]]:
+    """Price-only base_score, then news_delta overlay → final invest_score (2B)."""
     X, keep = feature_matrix(rows)
     if len(keep) == 0:
         return []
@@ -152,22 +173,40 @@ def score_rows(
     out: list[dict[str, Any]] = []
     for local_i, row_i in enumerate(keep):
         r = rows[row_i]
-        score = float(proba[local_i] * 100.0)
+        base = float(proba[local_i] * 100.0)
+        try:
+            delta = float(r.get("news_delta") or 0)
+            if delta == float(MISSING_NUM):
+                delta = 0.0
+        except (TypeError, ValueError):
+            delta = 0.0
+        # Clamp overlay to [-5, 5] per plan
+        delta = max(-5.0, min(5.0, delta))
+        final = max(0.0, min(100.0, base + delta))
+        report_date = r.get("report_date") or r.get("decision_ts") or ""
+        report_id = r.get("report_id") or r.get("snapshot_id") or ""
         out.append(
             {
-                "snapshot_id": r.get("snapshot_id", ""),
+                "report_id": report_id,
                 "coingecko_id": r.get("coingecko_id", ""),
                 "token_symbol": r.get("token_symbol", ""),
-                "decision_ts": r.get("decision_ts", ""),
-                "price_usd_t": r.get("price_usd_t", ""),
+                "report_date": report_date,
+                "price_usd": _get(r, "price_usd"),
+                "return_24h": r.get("return_24h", ""),
                 "volume_24h_usd": r.get("volume_24h_usd", ""),
                 "market_cap_usd": r.get("market_cap_usd", ""),
                 "market_cap_rank": r.get("market_cap_rank", ""),
-                "ath_change_percentage": r.get("ath_change_percentage", ""),
-                "price_change_percentage_30d": r.get("price_change_percentage_30d", ""),
+                "drawdown_from_peak_pct": _get(r, "drawdown_from_peak_pct"),
+                "momentum_30d_pct": _get(r, "momentum_30d_pct"),
+                "press_opinion": r.get("press_opinion", ""),
+                "press_conflict": r.get("press_conflict", ""),
+                "news_delta": delta,
                 "positive_90d_return": r.get("positive_90d_return", ""),
-                "invest_score": round(score, 2),
-                "decision": "Invest" if score >= threshold else "Skip",
+                "base_score": round(base, 2),
+                "invest_score": round(final, 2),
+                "decision": "Invest" if final >= threshold else "Skip",
+                "snapshot_id": report_id,
+                "decision_ts": report_date,
             }
         )
     return out
@@ -178,7 +217,7 @@ def latest_per_token(decisions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for d in decisions:
         tid = d["coingecko_id"]
         prev = best.get(tid)
-        if prev is None or d["decision_ts"] > prev["decision_ts"]:
+        if prev is None or d["report_date"] > prev["report_date"]:
             best[tid] = d
     return sorted(best.values(), key=lambda x: (-x["invest_score"], x["token_symbol"]))
 
@@ -186,7 +225,7 @@ def latest_per_token(decisions: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def write_decisions_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=DECISION_FIELDS)
+        w = csv.DictWriter(f, fieldnames=DECISION_FIELDS, extrasaction="ignore")
         w.writeheader()
         for r in rows:
             w.writerow(r)
@@ -198,13 +237,13 @@ def run_train_and_score(
 ) -> dict[str, Any]:
     cfg = cfg or load_config()
     ensure_dirs(cfg)
-    snap_path = ROOT / cfg["paths"]["snapshots_csv"]
+    snap_path = ROOT / cfg["paths"].get("daily_reports_csv", cfg["paths"]["snapshots_csv"])
     model_path = ROOT / cfg["paths"].get("model_path", "data/processed/invest_model.joblib")
     metrics_path = ROOT / cfg["paths"].get("model_metrics", "data/processed/model_metrics.json")
     decisions_path = ROOT / cfg["paths"].get("decisions_csv", "data/processed/decisions.csv")
     latest_path = ROOT / cfg["paths"].get("latest_decisions_csv", "data/processed/latest_decisions.csv")
 
-    rows = load_snapshots(snap_path)
+    rows = load_reports(snap_path)
     pipe, metrics = train_model(rows)
     metrics["threshold"] = threshold
     joblib.dump(pipe, model_path)
@@ -215,21 +254,29 @@ def run_train_and_score(
     latest = latest_per_token(decisions)
     write_decisions_csv(latest_path, latest)
 
+    # Merge scores + paper trade onto daily_reports.csv
+    enriched = merge_scores_into_reports([dict(r) for r in rows], decisions)
+    write_reports_csv(snap_path, enriched)
+    paper = run_paper_on_reports(cfg)
+
     invest_n = sum(1 for d in latest if d["decision"] == "Invest")
     return {
+        "reports": len(rows),
         "snapshots": len(rows),
         "scored": len(decisions),
         "latest_tokens": len(latest),
         "latest_invest": invest_n,
+        "paper": paper,
         "metrics": metrics,
         "model_path": str(model_path),
         "decisions_csv": str(decisions_path),
         "latest_decisions_csv": str(latest_path),
+        "daily_reports_csv": str(snap_path),
     }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train invest scorer and write decisions")
+    parser = argparse.ArgumentParser(description="Train invest scorer and paper-trade")
     parser.add_argument("--threshold", type=float, default=50.0)
     args = parser.parse_args()
     result = run_train_and_score(threshold=args.threshold)

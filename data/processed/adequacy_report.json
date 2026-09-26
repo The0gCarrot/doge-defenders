@@ -1,34 +1,38 @@
 {
   "records": {
-    "value": 510,
+    "value": 525,
     "standard": 500,
     "ok": true
   },
   "usable_attributes": {
-    "value": 11,
+    "value": 15,
     "standard": 10,
     "ok": true,
     "attrs": [
       "token_symbol",
-      "decision_ts",
-      "price_usd_t",
+      "report_date",
+      "price_usd",
+      "return_24h",
       "volume_24h_usd",
       "market_cap_usd",
       "market_cap_rank",
       "category",
       "primary_exchange",
       "hist_prices_30d",
-      "ath_change_percentage",
-      "price_change_percentage_30d"
+      "momentum_30d_pct",
+      "drawdown_from_peak_pct",
+      "press_release",
+      "press_opinion",
+      "news_count_10d"
     ]
   },
   "minority_class_cases": {
-    "value": 87,
+    "value": 119,
     "standard": 60,
     "ok": true,
-    "positives": 87,
-    "negatives": 423,
-    "labeled": 510
+    "positives": 406,
+    "negatives": 119,
+    "labeled": 525
   },
   "recommendations": []
 }

@@ -67,3 +67,10 @@ class CoinGeckoClient:
             f"coins/{coin_id}/market_chart",
             {"vs_currency": "usd", "days": days},
         )
+
+    def status_updates(self, coin_id: str, per_page: int = 50) -> Any:
+        """Public project status updates / headlines for a coin (may be empty)."""
+        return self.get(
+            f"coins/{coin_id}/status_updates",
+            {"per_page": per_page, "page": 1},
+        )
