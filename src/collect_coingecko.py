@@ -261,7 +261,6 @@ def build_reports_for_coin(
 
     gdelt_client = GdeltClient()  # only for window filter helper
     rows: list[dict[str, Any]] = []
-    prev_price: float | None = None
 
     for day in report_dates:
         t = parse_date(day)
@@ -284,29 +283,24 @@ def build_reports_for_coin(
         price_t = px[1] if px else MISSING_NUM
         price_t90 = px90[1] if px90 else MISSING_NUM
 
-        # return_24h vs prior report day (or nearest prior chart point ~1d ago)
-        if (
-            isinstance(price_t, (int, float))
-            and price_t != MISSING_NUM
-            and prev_price is not None
-            and prev_price > 0
-        ):
-            ret_24h = (price_t / prev_price - 1.0) * 100.0
-        else:
-            # fallback: chart point ~1 day earlier
-            px_y = nearest_point(prices, t_ms - 86_400_000)
-            if (
-                px_y
-                and isinstance(price_t, (int, float))
-                and price_t != MISSING_NUM
-                and px_y[1] > 0
-            ):
-                ret_24h = (price_t / px_y[1] - 1.0) * 100.0
-            else:
-                ret_24h = MISSING_NUM
+        # Don't use a chart point that is more than ~2 days from the report day
+        # (stale raw JSON would otherwise price "today" as last chart close).
+        if px and abs(int(px[0]) - t_ms) > 2 * 86_400_000:
+            price_t = MISSING_NUM
 
-        if isinstance(price_t, (int, float)) and price_t != MISSING_NUM:
-            prev_price = float(price_t)
+        # Always use ~1 calendar day lookback on the chart (not prior report row).
+        px_y = nearest_point(prices, t_ms - 86_400_000)
+        if (
+            px
+            and px_y
+            and isinstance(price_t, (int, float))
+            and price_t != MISSING_NUM
+            and px_y[1] > 0
+            and abs(int(px[0]) - t_ms) <= 2 * 86_400_000
+        ):
+            ret_24h = (price_t / px_y[1] - 1.0) * 100.0
+        else:
+            ret_24h = MISSING_NUM
 
         if (
             isinstance(price_t, (int, float))
@@ -347,7 +341,7 @@ def build_reports_for_coin(
             "coingecko_id": coin_id,
             "token_symbol": symbol,
             "report_date": f"{day}T00:00:00Z",
-            "price_usd": price_t if px else MISSING_NUM,
+            "price_usd": price_t if price_t != MISSING_NUM else MISSING_NUM,
             "return_24h": ret_24h
             if not (isinstance(ret_24h, float) and math.isnan(ret_24h))
             else MISSING_NUM,
@@ -577,6 +571,29 @@ def main() -> None:
             print(f"  ERROR {msg}", flush=True)
             errors.append({"coingecko_id": coin_id, "error": msg})
 
+    # Live CoinGecko /coins/markets for include_today (paper day).
+    today = datetime.now(timezone.utc).date().isoformat()
+    live_meta: dict[str, Any] = {}
+    if cfg.get("include_today", True) and any(
+        str(r.get("report_date", ""))[:10] == today for r in all_rows
+    ):
+        from src.live_prices import apply_live_markets_to_rows, fetch_live_markets
+
+        print(f"Fetching live CoinGecko /coins/markets for {today}…", flush=True)
+        try:
+            live = fetch_live_markets(cfg)
+            n_live = apply_live_markets_to_rows(all_rows, live, day=today)
+            live_meta = {
+                "asof_utc": datetime.now(timezone.utc).isoformat(),
+                "source": "coingecko:/coins/markets",
+                "updated_rows": n_live,
+            }
+            write_json(raw_dir / "_live_prices.json", {"day": today, **live_meta, "markets": live})
+            print(f"  Applied live markets to {n_live} today-rows", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  LIVE PRICE ERROR: {exc}", flush=True)
+            errors.append({"coingecko_id": "_live_prices", "error": str(exc)})
+
     assign_universe_ranks(all_rows)
     out_csv = ROOT / cfg["paths"]["daily_reports_csv"]
     write_reports_csv(out_csv, all_rows)
@@ -590,6 +607,7 @@ def main() -> None:
             "errors": len(errors),
             "output": str(out_csv),
             "news": "gdelt+yahoo" if fetch_news else "skipped",
+            "live_prices_today": bool(live_meta),
         },
     )
     labeled = sum(1 for r in all_rows if r["positive_90d_return"] in (0, 1))

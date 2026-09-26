@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
 from src import MISSING_NUM, ensure_dirs, load_config, write_json
 from src.paper_trade import merge_scores_into_reports, run_paper_on_reports
 from src.collect_coingecko import REPORT_FIELDS, write_reports_csv
+from src.live_prices import refresh_live_today
 
 FEATURE_COLS = [
     "price_usd",
@@ -234,6 +235,8 @@ def write_decisions_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 def run_train_and_score(
     cfg: dict[str, Any] | None = None,
     threshold: float = 50.0,
+    *,
+    refresh_live: bool = True,
 ) -> dict[str, Any]:
     cfg = cfg or load_config()
     ensure_dirs(cfg)
@@ -243,9 +246,17 @@ def run_train_and_score(
     decisions_path = ROOT / cfg["paths"].get("decisions_csv", "data/processed/decisions.csv")
     latest_path = ROOT / cfg["paths"].get("latest_decisions_csv", "data/processed/latest_decisions.csv")
 
+    live_meta: dict[str, Any] = {}
+    if refresh_live:
+        live_meta = refresh_live_today(cfg)
+        if not live_meta.get("ok"):
+            # Still score; paper day may be missing until collector adds today
+            live_meta = {"ok": False, "warning": live_meta.get("error")}
+
     rows = load_reports(snap_path)
     pipe, metrics = train_model(rows)
     metrics["threshold"] = threshold
+    metrics["live_prices"] = live_meta
     joblib.dump(pipe, model_path)
     write_json(metrics_path, metrics)
 
@@ -266,6 +277,7 @@ def run_train_and_score(
         "scored": len(decisions),
         "latest_tokens": len(latest),
         "latest_invest": invest_n,
+        "live_prices": live_meta,
         "paper": paper,
         "metrics": metrics,
         "model_path": str(model_path),

@@ -68,6 +68,79 @@ class CoinGeckoClient:
             {"vs_currency": "usd", "days": days},
         )
 
+    def simple_prices(
+        self,
+        coin_ids: list[str],
+        *,
+        include_24hr_change: bool = True,
+    ) -> dict[str, dict[str, float]]:
+        """Batch live USD prices (one call). Values: {usd, usd_24h_change?}."""
+        if not coin_ids:
+            return {}
+        params: dict[str, Any] = {"ids": ",".join(coin_ids), "vs_currencies": "usd"}
+        if include_24hr_change:
+            params["include_24hr_change"] = "true"
+        data = self.get("simple/price", params)
+        out: dict[str, dict[str, float]] = {}
+        for cid in coin_ids:
+            row = data.get(cid) or {}
+            if "usd" not in row:
+                continue
+            entry: dict[str, float] = {"usd": float(row["usd"])}
+            if "usd_24h_change" in row and row["usd_24h_change"] is not None:
+                entry["usd_24h_change"] = float(row["usd_24h_change"])
+            out[cid] = entry
+        return out
+
+    def markets_live(self, coin_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """
+        Live market snapshot for scoring + paper (one call).
+        Fields: price_usd, volume_24h_usd, market_cap_usd, return_24h, momentum_30d_pct.
+        """
+        if not coin_ids:
+            return {}
+        data = self.get(
+            "coins/markets",
+            {
+                "vs_currency": "usd",
+                "ids": ",".join(coin_ids),
+                "order": "market_cap_desc",
+                "per_page": len(coin_ids),
+                "page": 1,
+                "sparkline": "false",
+                "price_change_percentage": "24h,30d",
+            },
+        )
+        out: dict[str, dict[str, Any]] = {}
+        if not isinstance(data, list):
+            return out
+        for row in data:
+            cid = str(row.get("id") or "")
+            if not cid:
+                continue
+            out[cid] = {
+                "price_usd": float(row["current_price"])
+                if row.get("current_price") is not None
+                else None,
+                "volume_24h_usd": float(row["total_volume"])
+                if row.get("total_volume") is not None
+                else None,
+                "market_cap_usd": float(row["market_cap"])
+                if row.get("market_cap") is not None
+                else None,
+                "return_24h": float(row["price_change_percentage_24h"])
+                if row.get("price_change_percentage_24h") is not None
+                else (
+                    float(row["price_change_percentage_24h_in_currency"])
+                    if row.get("price_change_percentage_24h_in_currency") is not None
+                    else None
+                ),
+                "momentum_30d_pct": float(row["price_change_percentage_30d_in_currency"])
+                if row.get("price_change_percentage_30d_in_currency") is not None
+                else None,
+            }
+        return out
+
     def status_updates(self, coin_id: str, per_page: int = 50) -> Any:
         """Public project status updates / headlines for a coin (may be empty)."""
         return self.get(

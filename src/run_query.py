@@ -46,9 +46,11 @@ def run_collect(force_refresh: bool = True) -> dict[str, Any]:
 
 
 def run_query(force_refresh: bool = True, threshold: float = 50.0) -> dict[str, Any]:
+    """Collect (charts optional force) → always live today prices → score → paper."""
     started = datetime.now(timezone.utc).isoformat()
     collect_meta = run_collect(force_refresh=force_refresh)
-    model_result = run_train_and_score(threshold=threshold)
+    # Collector already applies live prices; score path refreshes live again.
+    model_result = run_train_and_score(threshold=threshold, refresh_live=True)
     finished = datetime.now(timezone.utc).isoformat()
     payload = {
         "started_utc": started,

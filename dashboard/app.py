@@ -1,8 +1,8 @@
 """
 Doge Defenders — Streamlit experiment dashboard.
 
-Paper bankroll $1000 · allocation_pct = invest_score/10 % of remaining cash ·
-position_value_usd + paper_return_24h (from return_24h).
+Live CoinGecko simple/price for today's paper day on every load / score / query.
+Paper bankroll $1000 · allocation_pct = invest_score/10 % of remaining cash.
 
 Run:  streamlit run dashboard/app.py
 """
@@ -22,6 +22,8 @@ if str(ROOT) not in sys.path:
 
 from src import load_config
 from src.invest_model import run_train_and_score
+from src.live_prices import refresh_live_today
+from src.paper_trade import run_paper_on_reports
 from src.run_query import run_query
 
 st.set_page_config(
@@ -30,7 +32,6 @@ st.set_page_config(
     layout="wide",
 )
 
-# Experiment table: price + press + score + paper sizing
 VIEW_COLS = [
     "token_symbol",
     "report_date",
@@ -48,11 +49,10 @@ VIEW_COLS = [
 ]
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=15)
 def load_csv(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
-    # Keep "N/A" as text for historical paper fields
     return pd.read_csv(path, keep_default_na=False, na_values=[""])
 
 
@@ -60,6 +60,13 @@ def load_json(path: Path) -> dict:
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def sync_live_and_paper() -> dict:
+    """Pull live USD for today, re-run paper sizing on updated prices."""
+    live = refresh_live_today()
+    paper = run_paper_on_reports() if live.get("ok") else {}
+    return {"live": live, "paper": paper}
 
 
 def main() -> None:
@@ -73,26 +80,27 @@ def main() -> None:
     last_query_path = ROOT / paths.get("last_query_json", "data/processed/last_query.json")
     ledger_path = ROOT / paths.get("paper_ledger_csv", "data/processed/paper_ledger.csv")
     bankroll_path = ROOT / paths.get("paper_bankroll_json", "data/processed/paper_bankroll.json")
+    live_path = ROOT / paths["raw_dir"] / "_live_prices.json"
 
     start_bal = float(cfg.get("paper_starting_balance", 1000))
 
     st.title("Doge Defenders")
     st.caption(
-        f"Experiment: daily reports + GDELT/Yahoo press → invest score (±5 news) → "
-        f"paper bankroll ${start_bal:,.0f} "
-        f"(alloc % = score/10 of remaining cash; MTM via return_24h)."
+        f"Live CoinGecko prices for today’s paper book · "
+        f"GDELT/Yahoo press · invest score (±5 news) · "
+        f"${start_bal:,.0f} bankroll (alloc % = score/10 of remaining cash)."
     )
 
     with st.sidebar:
         st.header("Run query")
         st.write(
-            "Rebuild daily reports (prices + news), retrain, apply news overlay, "
-            "paper-trade from today’s 15 snapshots."
+            "Live prices are always refreshed. "
+            "Check the box to also re-download CoinGecko charts (slow)."
         )
         threshold = st.slider("Invest score threshold", 30.0, 70.0, 50.0, 1.0)
-        force = st.checkbox("Force API refresh (slow)", value=False)
+        force = st.checkbox("Also refresh historical charts (slow)", value=True)
         if st.button("Run query", type="primary", use_container_width=True):
-            with st.spinner("Collecting + scoring + paper…"):
+            with st.spinner("Live prices + collect + score + paper…"):
                 try:
                     if force:
                         result = run_query(force_refresh=True, threshold=threshold)
@@ -107,35 +115,59 @@ def main() -> None:
                             sys.argv = old
                         result = {
                             "force_refresh": False,
-                            "model": run_train_and_score(threshold=threshold),
+                            "model": run_train_and_score(threshold=threshold, refresh_live=True),
                         }
-                        (ROOT / "data/processed/last_query.json").write_text(
+                        last_query_path.write_text(
                             json.dumps(result, indent=2), encoding="utf-8"
                         )
-                    st.success("Query finished.")
+                    st.success("Query finished (live prices applied).")
                     st.json(result.get("model", result))
                     st.cache_data.clear()
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"Query failed: {exc}")
 
-        if st.button("Score + paper only", use_container_width=True):
-            with st.spinner("Training + paper trading…"):
+        if st.button("Refresh live prices + paper", use_container_width=True):
+            with st.spinner("CoinGecko simple/price + paper…"):
                 try:
-                    result = run_train_and_score(threshold=threshold)
-                    st.success("Scored daily reports + paper ledger.")
+                    out = sync_live_and_paper()
+                    st.success(
+                        f"Live prices updated ({out['live'].get('updated_rows', 0)} rows)."
+                    )
+                    st.json(out)
+                    st.cache_data.clear()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"Live refresh failed: {exc}")
+
+        if st.button("Score + paper (live prices)", use_container_width=True):
+            with st.spinner("Live prices + train + paper…"):
+                try:
+                    result = run_train_and_score(threshold=threshold, refresh_live=True)
+                    st.success("Scored with live prices.")
                     st.json(result)
                     st.cache_data.clear()
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"Score failed: {exc}")
 
         st.divider()
+        st.markdown("**Live source**")
+        st.write("CoinGecko `simple/price` (batch) for today’s USD + 24h change.")
         st.markdown("**Paper rules**")
         st.write(
-            f"Start ${start_bal:,.0f}. Invest + score 94 → 9.4% of remaining cash. "
-            "Historical rows = N/A. Positions mark with return_24h each run."
+            f"Start ${start_bal:,.0f}. Score 94 → 9.4% of remaining cash. "
+            "Historical rows = N/A."
         )
         st.markdown("**Tokens**")
         st.write(", ".join(cfg["tokens"]))
+
+    # Auto live sync once per session page load (prices + paper mark)
+    if "live_synced" not in st.session_state:
+        try:
+            st.session_state["live_sync_result"] = sync_live_and_paper()
+            st.session_state["live_synced"] = True
+            st.cache_data.clear()
+        except Exception as exc:  # noqa: BLE001
+            st.session_state["live_sync_result"] = {"error": str(exc)}
+            st.session_state["live_synced"] = True
 
     snaps = load_csv(snap_path)
     latest = load_csv(latest_path)
@@ -144,10 +176,10 @@ def main() -> None:
     last_q = load_json(last_query_path)
     ledger = load_csv(ledger_path)
     bankroll = load_json(bankroll_path)
+    live_meta = load_json(live_path)
     if not bankroll:
         bankroll = (last_q.get("model") or {}).get("paper", {}).get("bankroll") or {}
 
-    # Header: experiment bankroll first
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Daily reports", len(snaps) if not snaps.empty else 0)
     if bankroll:
@@ -163,6 +195,9 @@ def main() -> None:
     else:
         c5.metric("Paper opens", 0)
 
+    if live_meta.get("asof_utc"):
+        st.caption(f"Live prices as of **{live_meta['asof_utc']}** (CoinGecko simple/price).")
+
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
         [
             "Today's paper book",
@@ -174,15 +209,15 @@ def main() -> None:
     )
 
     with tab1:
-        st.subheader("Today’s 15 snapshots (experiment view)")
+        st.subheader("Today’s 15 snapshots (live USD)")
         st.caption(
-            "allocation_pct = invest_score/10 (% of remaining cash at open). "
-            "position_value_usd = $ in token. paper_return_24h = trade return_24h."
+            "Prices from live CoinGecko. "
+            "allocation_pct = invest_score/10 of remaining cash at open."
         )
         if snaps.empty:
             st.info("No reports yet.")
         else:
-            paper_day = str(bankroll.get("paper_start_date") or "")
+            paper_day = str(bankroll.get("paper_start_date") or live_meta.get("day") or "")
             if not paper_day and "report_date" in snaps.columns:
                 paper_day = str(snaps["report_date"].astype(str).str[:10].max())
             day_mask = snaps["report_date"].astype(str).str[:10] == paper_day[:10]
@@ -202,8 +237,7 @@ def main() -> None:
                 pos = pd.to_numeric(show["position_value_usd"], errors="coerce").fillna(0)
                 st.write(
                     f"Open notional on {paper_day[:10]}: "
-                    f"**${pos.sum():,.2f}** across "
-                    f"**{int((pos > 0).sum())}** tokens."
+                    f"**${pos.sum():,.2f}** across **{int((pos > 0).sum())}** tokens."
                 )
 
     with tab2:
@@ -216,7 +250,7 @@ def main() -> None:
     with tab3:
         st.caption(
             f"Paper portfolio: ${start_bal:,.0f} start. "
-            "Score 94 → 9.4% of remaining cash. Ledger = opens/closes only."
+            "Entry prices from live CoinGecko at open."
         )
         if bankroll:
             b1, b2, b3, b4 = st.columns(4)
@@ -230,14 +264,14 @@ def main() -> None:
             st.dataframe(ledger, use_container_width=True, hide_index=True, height=420)
 
     with tab4:
+        st.subheader("Live prices")
+        st.json(live_meta or {})
         st.subheader("Adequacy")
-        st.json(adequacy or {"hint": "python -m src.adequacy_report"})
+        st.json(adequacy or {})
         st.subheader("Model metrics")
         st.json(metrics or {})
         st.subheader("Bankroll")
         st.json(bankroll or {})
-        st.subheader("Last query")
-        st.json(last_q or {})
 
     with tab5:
         decisions = load_csv(decisions_path)

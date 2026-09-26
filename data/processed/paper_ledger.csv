@@ -1,4 +1,4 @@
 coingecko_id,token_symbol,action,report_date,price,entry_price,hold_days,pnl_pct,allocation_pct,dollars,cash_after,reason,invest_score,paper_return_24h
-bitcoin,BTC,open,2026-09-26T00:00:00Z,76607.98786983466,76607.98786983466,0,0.0,9.423,94.23,905.77,model_invest,94.23,0.0
-ethereum,ETH,open,2026-09-26T00:00:00Z,2460.7734099765744,2460.7734099765744,0,0.0,8.556,77.4977,828.2723,model_invest,85.56,0.0
-solana,SOL,open,2026-09-26T00:00:00Z,101.43741493707688,101.43741493707688,0,0.0,5.797,48.0149,780.2574,model_invest,57.97,0.0
+ethereum,ETH,open,2026-09-26T00:00:00Z,2689.26,2689.26,0,0.0,9.696,96.96,903.04,model_invest,96.96,0.0
+bitcoin,BTC,open,2026-09-26T00:00:00Z,84317.0,84317.0,0,0.0,9.495,85.7436,817.2964,model_invest,94.95,0.0
+solana,SOL,open,2026-09-26T00:00:00Z,121.5,121.5,0,0.0,5.956,48.6782,768.6182,model_invest,59.56,0.0
