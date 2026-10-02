@@ -32,20 +32,30 @@ st.set_page_config(
     layout="wide",
 )
 
-VIEW_COLS = [
+# One column per fact that can change the call.
+# Dropped as the same fact twice: coingecko_id and report_id (the symbol),
+# news_headlines_10d (a copy of press_release), hist_prices_30d (already
+# in the 30-day change and the distance from the high).
+DECISION_COLS = [
     "token_symbol",
     "report_date",
     "price_usd",
     "return_24h",
-    "press_release",
-    "press_opinion",
-    "invest_score",
-    "model_decision",
-    "allocation_pct",
-    "position_value_usd",
-    "paper_return_24h",
+    "volume_24h_usd",
+    "market_cap_usd",
+    "market_cap_rank",
     "momentum_30d_pct",
     "drawdown_from_peak_pct",
+    "press_gdelt",
+    "press_yahoo",
+    "press_release",
+    "press_opinion",
+    "press_conflict",
+    "news_delta",
+    "base_score",
+    "invest_score",
+    "model_decision",
+    "position_value_usd",
 ]
 
 
@@ -211,28 +221,29 @@ def main() -> None:
     with tab1:
         st.subheader("Today’s 15 snapshots (live USD)")
         st.caption(
-            "Prices from live CoinGecko. "
-            "allocation_pct = invest_score/10 of remaining cash at open."
+            "Price score, then GDELT and Yahoo. "
+            "Bullish adds 5 points, bearish subtracts 5, and a disagreement adds 0. "
+            "Invest when that total is 50 or higher."
         )
         if snaps.empty:
             st.info("No reports yet.")
         else:
-            paper_day = str(bankroll.get("paper_start_date") or live_meta.get("day") or "")
-            if not paper_day and "report_date" in snaps.columns:
-                paper_day = str(snaps["report_date"].astype(str).str[:10].max())
+            latest_day = str(snaps["report_date"].astype(str).str[:10].max())
+            paper_day = str(live_meta.get("day") or latest_day)
             day_mask = snaps["report_date"].astype(str).str[:10] == paper_day[:10]
             today_df = snaps.loc[day_mask] if paper_day else snaps
-            cols = [c for c in VIEW_COLS if c in today_df.columns]
-            extra = [
-                c
-                for c in ("base_score", "news_delta", "press_conflict", "did_invest")
-                if c in today_df.columns
-            ]
-            show = today_df[cols + extra].sort_values(
+            cols = [c for c in DECISION_COLS if c in today_df.columns]
+            show = today_df[cols].sort_values(
                 ["invest_score", "token_symbol"],
                 ascending=[False, True],
             )
-            st.dataframe(show, use_container_width=True, hide_index=True, height=520)
+            st.caption(
+                f"{len(show)} rows for {paper_day[:10]}. "
+                "The symbol stands in for the CoinGecko id. "
+                "GDELT and Yahoo are the two sources; opinion and news points are the press score; "
+                "invest score is the price score plus those points; Invest or Skip is that total against 50."
+            )
+            st.dataframe(show, width="stretch", hide_index=True, height=520)
             if not show.empty and "position_value_usd" in show.columns:
                 pos = pd.to_numeric(show["position_value_usd"], errors="coerce").fillna(0)
                 st.write(
@@ -244,8 +255,12 @@ def main() -> None:
         if snaps.empty:
             st.warning(f"Missing {snap_path.name} — run the collector.")
         else:
-            st.caption("Full history (paper fields = N/A before paper start).")
-            st.dataframe(snaps, use_container_width=True, hide_index=True, height=480)
+            st.caption(
+                "Same decision columns on every day. "
+                "CoinGecko id, the duplicate headline copy, and the raw 30-day price list stay in the file and are not repeated here."
+            )
+            cols = [c for c in DECISION_COLS if c in snaps.columns]
+            st.dataframe(snaps[cols], width="stretch", hide_index=True, height=480)
 
     with tab3:
         st.caption(

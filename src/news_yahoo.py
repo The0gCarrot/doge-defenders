@@ -33,13 +33,13 @@ class YahooRssClient:
             time.sleep(wait)
         self._last_call = time.monotonic()
 
-    def fetch_feed(self, yahoo_symbol: str) -> list[dict[str, Any]]:
+    def fetch_feed(self, yahoo_symbol: str, *, refresh: bool = False) -> list[dict[str, Any]]:
         cache_path: Path | None = None
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             safe = yahoo_symbol.replace("/", "_")
             cache_path = self.cache_dir / f"yahoo_{safe}.json"
-            if cache_path.exists():
+            if cache_path.exists() and not refresh:
                 payload = json.loads(cache_path.read_text(encoding="utf-8"))
                 return list(payload.get("items") or [])
 
@@ -64,8 +64,10 @@ class YahooRssClient:
         yahoo_symbol: str,
         report_day: datetime,
         lookback_days: int,
+        *,
+        refresh: bool = False,
     ) -> list[str]:
-        items = self.fetch_feed(yahoo_symbol)
+        items = self.fetch_feed(yahoo_symbol, refresh=refresh)
         start = report_day - timedelta(days=lookback_days)
         end = report_day + timedelta(days=1)
         titles: list[str] = []

@@ -95,12 +95,17 @@ class GdeltClient:
             time.sleep(wait)
         self._last_call = time.monotonic()
 
-    def _get_json(self, params: dict[str, str], retries: int = 2) -> tuple[dict[str, Any], str]:
+    def _get_json(
+        self,
+        params: dict[str, str],
+        retries: int = 2,
+        timeout: int = 90,
+    ) -> tuple[dict[str, Any], str]:
         last_err = ""
         for attempt in range(retries):
             self._throttle()
             try:
-                resp = self.session.get(GDELT_DOC, params=params, timeout=90)
+                resp = self.session.get(GDELT_DOC, params=params, timeout=timeout)
                 if resp.status_code == 429:
                     last_err = "429 Too Many Requests"
                     time.sleep(8.0 * (attempt + 1))

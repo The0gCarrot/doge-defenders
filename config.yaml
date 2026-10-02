@@ -87,9 +87,10 @@ paths:
 
 # Model: Invest if P(up in 90d)*100 >= threshold.
 invest_threshold: 50
-# Paper trading: only from this day forward (today | latest | YYYY-MM-DD).
-# Rows before this date get paper fields = N/A and are not written to the ledger.
-paper_start_date: today
+# Paper trading starts on the first live day and keeps going.
+# "today" would wipe yesterday's positions every morning.
+# Rows before this date stay N/A and never enter the ledger.
+paper_start_date: "2026-09-26"
 paper_starting_balance: 1000
 paper_stop_loss_pct: -15
 paper_take_profit_pct: 25
